@@ -15,15 +15,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { addExpense } from '@/services/expenses';
+import { addIncome } from '@/services/income';
 import { CATEGORIES } from '@/constants/categories';
+import { INCOME_SOURCES } from '@/constants/income-sources';
+
+type TransactionType = 'expense' | 'income';
 
 export default function AddExpenseScreen() {
   const insets = useSafeAreaInsets();
   const { user, userData } = useAuth();
+  const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const isExpense = type === 'expense';
+  const categories = isExpense ? CATEGORIES : INCOME_SOURCES;
+  const accentColor = isExpense ? '#EF4444' : '#10B981';
 
   const handleSubmit = async () => {
     if (!amount.trim() || parseFloat(amount) <= 0) {
@@ -35,22 +44,34 @@ export default function AddExpenseScreen() {
       return;
     }
     if (!selectedCategory) {
-      Alert.alert('Error', 'Selecciona una categoria');
+      Alert.alert('Error', isExpense ? 'Selecciona una categoria' : 'Selecciona una fuente');
       return;
     }
 
     setLoading(true);
     try {
-      await addExpense({
-        amount: parseFloat(amount),
-        description: description.trim(),
-        category: selectedCategory,
-        userId: user?.uid || '',
-        userName: userData?.name || 'Usuario',
-        date: new Date(),
-      });
+      if (isExpense) {
+        await addExpense({
+          amount: parseFloat(amount),
+          description: description.trim(),
+          category: selectedCategory,
+          userId: user?.uid || '',
+          userName: userData?.name || 'Usuario',
+          date: new Date(),
+        });
+      } else {
+        await addIncome({
+          amount: parseFloat(amount),
+          description: description.trim(),
+          source: selectedCategory,
+          userId: user?.uid || '',
+          userName: userData?.name || 'Usuario',
+          date: new Date(),
+        });
+      }
 
-      Alert.alert('Listo', 'Gasto registrado correctamente', [
+      const label = isExpense ? 'Gasto' : 'Ingreso';
+      Alert.alert('Listo', `${label} registrado correctamente`, [
         {
           text: 'OK',
           onPress: () => {
@@ -61,10 +82,17 @@ export default function AddExpenseScreen() {
         },
       ]);
     } catch (error) {
-      console.error('Error adding expense:', error);
-      Alert.alert('Error', 'No se pudo registrar el gasto');
+      console.error('Error adding transaction:', error);
+      Alert.alert('Error', `No se pudo registrar el ${isExpense ? 'gasto' : 'ingreso'}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTypeSwitch = (newType: TransactionType) => {
+    if (newType !== type) {
+      setType(newType);
+      setSelectedCategory('');
     }
   };
 
@@ -80,13 +108,45 @@ export default function AddExpenseScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Nuevo Gasto</Text>
-          <Text style={styles.subtitle}>Registra tu gasto del dia</Text>
+          <Text style={styles.title}>Nuevo Registro</Text>
+          <Text style={styles.subtitle}>Registra un gasto o ingreso</Text>
+        </View>
+
+        {/* Type Toggle */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity
+            style={[styles.toggleButton, isExpense && styles.toggleExpenseActive]}
+            onPress={() => handleTypeSwitch('expense')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="arrow-down-circle"
+              size={20}
+              color={isExpense ? '#FFFFFF' : '#EF4444'}
+            />
+            <Text style={[styles.toggleText, isExpense && styles.toggleTextActive]}>
+              Gasto
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleButton, !isExpense && styles.toggleIncomeActive]}
+            onPress={() => handleTypeSwitch('income')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="arrow-up-circle"
+              size={20}
+              color={!isExpense ? '#FFFFFF' : '#10B981'}
+            />
+            <Text style={[styles.toggleText, !isExpense && styles.toggleTextActive]}>
+              Ingreso
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Amount Input */}
-        <View style={styles.amountContainer}>
-          <Text style={styles.currencySign}>$</Text>
+        <View style={[styles.amountContainer, { borderColor: accentColor + '30' }]}>
+          <Text style={[styles.currencySign, { color: accentColor }]}>$</Text>
           <TextInput
             style={styles.amountInput}
             placeholder="0.00"
@@ -111,7 +171,7 @@ export default function AddExpenseScreen() {
             <Ionicons name="create-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Ej: Compras del supermercado"
+              placeholder={isExpense ? 'Ej: Compras del supermercado' : 'Ej: Sueldo de enero'}
               placeholderTextColor="#9CA3AF"
               value={description}
               onChangeText={setDescription}
@@ -120,11 +180,11 @@ export default function AddExpenseScreen() {
           </View>
         </View>
 
-        {/* Category Selection */}
+        {/* Category / Source Selection */}
         <View style={styles.section}>
-          <Text style={styles.label}>Categoria</Text>
+          <Text style={styles.label}>{isExpense ? 'Categoria' : 'Fuente de ingreso'}</Text>
           <View style={styles.categoriesGrid}>
-            {CATEGORIES.map((category) => {
+            {categories.map((category) => {
               const isSelected = selectedCategory === category.id;
               return (
                 <TouchableOpacity
@@ -181,7 +241,11 @@ export default function AddExpenseScreen() {
 
         {/* Submit Button */}
         <TouchableOpacity
-          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
+          style={[
+            styles.submitButton,
+            { backgroundColor: accentColor },
+            loading && styles.submitButtonDisabled,
+          ]}
           onPress={handleSubmit}
           disabled={loading}
           activeOpacity={0.8}
@@ -191,7 +255,9 @@ export default function AddExpenseScreen() {
           ) : (
             <>
               <Ionicons name="checkmark-circle" size={22} color="#FFFFFF" />
-              <Text style={styles.submitButtonText}>Registrar Gasto</Text>
+              <Text style={styles.submitButtonText}>
+                Registrar {isExpense ? 'Gasto' : 'Ingreso'}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -210,7 +276,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 24,
   },
   title: {
     fontSize: 28,
@@ -222,12 +288,48 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 4,
   },
+  toggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  toggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 13,
+    gap: 8,
+  },
+  toggleExpenseActive: {
+    backgroundColor: '#EF4444',
+  },
+  toggleIncomeActive: {
+    backgroundColor: '#10B981',
+  },
+  toggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  toggleTextActive: {
+    color: '#FFFFFF',
+  },
   amountContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
+    borderWidth: 2,
     paddingHorizontal: 24,
     paddingVertical: 24,
     marginBottom: 24,
@@ -240,7 +342,6 @@ const styles = StyleSheet.create({
   currencySign: {
     fontSize: 40,
     fontWeight: '300',
-    color: '#94A3B8',
     marginRight: 4,
   },
   amountInput: {
@@ -334,16 +435,15 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     flexDirection: 'row',
-    backgroundColor: '#3B82F6',
     borderRadius: 16,
     height: 58,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
     marginTop: 12,
-    shadowColor: '#3B82F6',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 6,
   },
